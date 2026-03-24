@@ -1,0 +1,47 @@
+{
+  "name": "mastergo-vue-exporter",
+  "id": 188473398306746,
+  "main": "dist/main.js",
+  "ui": "dist/index.html",
+  "editor_type": [
+    "devMode"
+  ],
+  "capabilities": [
+    "snippetgen"
+  ],
+  "snippetSettings": {
+    "languages": [
+      {
+        "label": "Vue 3",
+        "value": "vue3",
+        "default": true
+      },
+      {
+        "label": "Vue 2",
+        "value": "vue2"
+      }
+    ],
+    "units": [
+      {
+        "scaledUnit": "fx",
+        "defaultScaleFactor": 1,
+        "default": true,
+        "value": "fx"
+      }
+    ],
+    "actions": [
+      {
+        "label": "打开设置",
+        "value": "openSettings"
+      },
+      {
+        "label": "复制到剪贴板",
+        "value": "copyToClipboard"
+      },
+      {
+        "label": "导出文件",
+        "value": "exportFile"
+      }
+    ]
+  }
+}
