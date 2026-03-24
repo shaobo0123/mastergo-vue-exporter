@@ -1,6 +1,6 @@
 # MasterGo Vue Exporter
 
-一个用于 MasterGo Dev Mode 的 Vue 代码导出插件。
+一个用于 MasterGo Dev Mode 的 Vue 代码导出插件，适合与内网版不支持插件与codegen使用。
 
 它的目标不是简单导出一份静态代码，而是尽量把设计稿节点转换成可维护的 Vue 单文件组件，并提供一套可配置的导出参数和提示词管理界面，便于后续做响应式优化、AI 二次改造或项目内接入。
 
@@ -73,16 +73,6 @@ npm run build
 - 插件 UI 会加载默认提示词
 - 如果你在 UI 中修改并保存，内容会存到插件本地存储中
 - 当前提示词主要用于人工复制或后续 AI 改造流程，不会自动参与现有导出逻辑
-
-## Git
-
-当前仓库默认分支为 `main`。
-
-首次推送到 GitHub：
-
-```bash
-git push -u origin main
-```
 
 ## 说明
 
