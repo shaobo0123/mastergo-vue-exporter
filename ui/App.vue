@@ -135,24 +135,9 @@
 <script lang="ts" setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { PluginMessage, UIMessage, sendMsgToPlugin } from '@messages/sender'
+import { getErrorMessage } from '@lib/utils'
+import type { GeneratorSettings, SnippetLanguage, StyleFormat, StyleExtractionMode, AssetRenderMode, ExportImageFormat } from '@lib/types'
 import promptTemplate from '../prompt.md?raw'
-
-type SnippetLanguage = 'vue3' | 'vue2'
-type StyleFormat = 'css' | 'scss'
-type StyleExtractionMode = 'off' | 'layout' | 'full'
-type AssetRenderMode = 'css' | 'auto' | 'image'
-type ExportImageFormat = 'PNG' | 'JPG' | 'WEBP' | 'SVG'
-
-type GeneratorSettings = {
-  framework: SnippetLanguage
-  useOfficialCodegen: boolean
-  styleFormat: StyleFormat
-  styleExtractionMode: StyleExtractionMode
-  exportImages: boolean
-  assetRenderMode: AssetRenderMode
-  imageFormat: ExportImageFormat
-  imageScale: string
-}
 
 const settings = ref<GeneratorSettings | null>(null)
 const statusText = ref('正在读取设置...')
@@ -220,24 +205,6 @@ function hideSettings() {
   sendMsgToPlugin({
     type: UIMessage.HIDE_SETTINGS,
   })
-}
-
-function getErrorMessage(error: unknown): string {
-  if (typeof error === 'string') {
-    return error
-  }
-
-  if (error && typeof error === 'object') {
-    if ('message' in error && typeof error.message === 'string') {
-      return error.message
-    }
-
-    if ('error' in error && typeof error.error === 'string') {
-      return error.error
-    }
-  }
-
-  return '未知错误'
 }
 
 async function handlePluginMessage(rawMessage: unknown) {
