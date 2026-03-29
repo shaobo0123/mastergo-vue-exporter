@@ -3,6 +3,7 @@ import type { GenerateEvent, SnippetBlock, BuildContext, GeneratorSettings } fro
 import { SETTINGS_STORAGE_KEY, PROMPT_STORAGE_KEY, DEFAULT_GENERATOR_SETTINGS, DEFAULT_PROMPT_TEMPLATE, resolveGeneratorSettings, buildUiState, resolveStoredPrompt, getMessageRecord, buildOfficialCodegenSnippets, normalizeGeneratorSettings, normalizePromptContent } from './settings'
 import { getErrorMessage, toPascalCase, getString } from './utils'
 import { createRenderNode, normalizeRenderTree, pushWarning } from './node'
+import { buildTemplateDsl } from './dsl'
 import { buildTemplate, buildStyleSheet, buildVueSfc, buildWarningComment, buildStyleExtraction } from './template'
 import { resolveAssetExportOptions, resolveRasterAssetDataUrl } from './export'
 
@@ -109,13 +110,14 @@ export async function buildSnippets(data: GenerateEvent): Promise<SnippetBlock[]
   }
 
   const root = normalizeRenderTree(await createRenderNode(rawNode as any, null, context, resolveRasterAsset), true)
-  const styleExtraction = buildStyleExtraction(root, context.styleExtractionMode)
-  const componentName = toPascalCase(root.name || 'MastergoLayout')
+  const templateDsl = buildTemplateDsl(root)
+  const styleExtraction = buildStyleExtraction(templateDsl.renderRoot, context.styleExtractionMode)
+  const componentName = toPascalCase(templateDsl.renderRoot.name || 'MastergoLayout')
   const styleFormat = settings.styleFormat
-  const template = buildTemplate(root, 1, styleExtraction)
-  const styleContent = buildStyleSheet(root, styleExtraction)
+  const template = buildTemplate(templateDsl.templateRoot, 1, styleExtraction)
+  const styleContent = buildStyleSheet(templateDsl.renderRoot, styleExtraction)
   const noteComment = buildWarningComment(context.warnings)
-  const vueSfc = buildVueSfc(template, styleContent, styleFormat, noteComment, settings.framework, componentName)
+  const vueSfc = buildVueSfc(template, styleContent, styleFormat, noteComment, settings.framework, componentName, templateDsl.repeatGroups)
 
   return [
     {

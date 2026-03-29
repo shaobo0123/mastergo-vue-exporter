@@ -52,8 +52,7 @@
       <label class="field">
         <span class="field-label">样式提取</span>
         <select v-model="settings.styleExtractionMode" :disabled="settings.useOfficialCodegen">
-          <option value="layout">仅提取布局类样式</option>
-          <option value="full">完整提取重复样式</option>
+          <option value="layout">提取结构重复样式</option>
           <option value="off">关闭</option>
         </select>
       </label>

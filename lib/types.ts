@@ -2,7 +2,7 @@
 
 export type SnippetLanguage = 'vue3' | 'vue2'
 export type StyleFormat = 'css' | 'scss'
-export type StyleExtractionMode = 'off' | 'layout' | 'full'
+export type StyleExtractionMode = 'off' | 'layout'
 export type AssetRenderMode = 'css' | 'auto' | 'image'
 export type ExportImageFormat = 'PNG' | 'JPG' | 'WEBP' | 'SVG'
 
@@ -97,6 +97,38 @@ export type RenderNode = {
   styles: StyleEntry[]
   children: RenderNode[]
   rasterAssetDataUrl: string
+}
+
+export type ElementTemplateNode = {
+  kind: 'element'
+  id: string
+  tag: string
+  text: string
+  textBinding?: string
+  styleBinding?: string
+  children: TemplateNode[]
+}
+
+export type RepeatTemplateNode = {
+  kind: 'repeat'
+  id: string
+  sourceName: string
+  itemAlias: string
+  template: ElementTemplateNode
+}
+
+export type TemplateNode = ElementTemplateNode | RepeatTemplateNode
+
+export type RepeatTemplateGroup = {
+  sourceName: string
+  itemAlias: string
+  items: Record<string, unknown>[]
+}
+
+export type TemplateBuildResult = {
+  renderRoot: RenderNode
+  templateRoot: ElementTemplateNode
+  repeatGroups: RepeatTemplateGroup[]
 }
 
 export type BuildContext = {

@@ -1,16 +1,24 @@
-import type { RenderNode, StyleEntry, StyleExtractionResult, SharedStyleBlock, StyleFormat, SnippetLanguage } from './types'
-import { escapeHtml, escapeVueText, escapeJsString, toPascalCase } from './utils'
+import type { ElementTemplateNode, RenderNode, RepeatTemplateGroup, RepeatTemplateNode, StyleEntry, StyleExtractionResult, SharedStyleBlock, StyleFormat, SnippetLanguage, TemplateNode } from './types'
+import { escapeHtml, escapeVueText, escapeJsString } from './utils'
 import { walkTree } from './node'
 
 // 模板构建
-export function buildTemplate(node: RenderNode, depth: number, styleExtraction: StyleExtractionResult): string {
+export function buildTemplate(node: TemplateNode, depth: number, styleExtraction: StyleExtractionResult): string {
+  if (node.kind === 'repeat') {
+    return buildRepeatTemplate(node, depth, styleExtraction)
+  }
+  return buildElementTemplate(node, depth, styleExtraction)
+}
+
+function buildElementTemplate(node: ElementTemplateNode, depth: number, styleExtraction: StyleExtractionResult, extraAttrs = ''): string {
   const indent = '  '.repeat(depth)
   const classNames = styleExtraction.classNamesByNodeId[node.id] || []
   const classAttr = classNames.length ? ` class="${escapeHtml(classNames.join(' '))}"` : ''
-  const openTag = `${indent}<${node.tag}${classAttr}>`
+  const styleAttr = node.styleBinding ? ` :style="${node.styleBinding}"` : ''
+  const openTag = `${indent}<${node.tag}${classAttr}${styleAttr}${extraAttrs}>`
   const closeTag = `${indent}</${node.tag}>`
   const childLines = node.children.map((child) => buildTemplate(child, depth + 1, styleExtraction))
-  const text = escapeVueText(node.text)
+  const text = node.textBinding ? `{{ ${node.textBinding} }}` : escapeVueText(node.text)
 
   if (!childLines.length && !text) {
     return `${openTag}${closeTag.slice(indent.length)}`
@@ -27,6 +35,15 @@ export function buildTemplate(node: RenderNode, depth: number, styleExtraction: 
   lines.push(...childLines)
   lines.push(closeTag)
   return lines.join('\n')
+}
+
+function buildRepeatTemplate(node: RepeatTemplateNode, depth: number, styleExtraction: StyleExtractionResult): string {
+  return buildElementTemplate(
+    node.template,
+    depth,
+    styleExtraction,
+    ` v-for="(${node.itemAlias}, index) in ${node.sourceName}" :key="index"`,
+  )
 }
 
 // 样式表构建
@@ -75,9 +92,10 @@ export function buildVueSfc(
   noteComment: string,
   framework: SnippetLanguage,
   componentName: string,
+  repeatGroups: RepeatTemplateGroup[],
 ): string {
   const styleLangAttr = styleFormat === 'scss' ? ' lang="scss"' : ''
-  const scriptBlock = framework === 'vue2' ? buildVue2ScriptBlock(componentName) : ''
+  const scriptBlock = buildComponentScriptBlock(componentName, framework, repeatGroups)
   const parts = [
     noteComment,
     '<template>',
@@ -93,8 +111,42 @@ export function buildVueSfc(
   return parts.join('\n')
 }
 
-function buildVue2ScriptBlock(componentName: string): string {
-  return `<script>\nexport default {\n  name: '${escapeJsString(componentName)}'\n}\n</script>`
+function buildComponentScriptBlock(componentName: string, framework: SnippetLanguage, repeatGroups: RepeatTemplateGroup[]): string {
+  if (!repeatGroups.length && framework !== 'vue2') {
+    return ''
+  }
+
+  const lines = [
+    '<script>',
+    'export default {',
+    `  name: '${escapeJsString(componentName)}',`,
+  ]
+
+  if (repeatGroups.length) {
+    lines.push('  data() {')
+    lines.push('    return {')
+    repeatGroups.forEach((group, index) => {
+      const payload = JSON.stringify(group.items, null, 2)
+        .split('\n')
+        .map((line, lineIndex) => (lineIndex === 0 ? `      ${group.sourceName}: ${line}` : `      ${line}`))
+      if (index === repeatGroups.length - 1) {
+        const lastLineIndex = payload.length - 1
+        payload[lastLineIndex] = `${payload[lastLineIndex]},`
+      } else {
+        const lastLineIndex = payload.length - 1
+        payload[lastLineIndex] = `${payload[lastLineIndex]},`
+      }
+      lines.push(...payload)
+    })
+    lines.push('    }')
+    lines.push('  }')
+  } else {
+    lines[lines.length - 1] = `  name: '${escapeJsString(componentName)}'`
+  }
+
+  lines.push('}')
+  lines.push('</script>')
+  return lines.join('\n')
 }
 
 export function buildWarningComment(warnings: string[]): string {
@@ -107,14 +159,78 @@ export function buildWarningComment(warnings: string[]): string {
 }
 
 // 样式提取
+const STRUCTURAL_SHARED_STYLE_PROP_ALLOWLIST = new Set([
+  'position',
+  'display',
+  'flex',
+  'flex-direction',
+  'justify-content',
+  'align-items',
+  'align-self',
+  'flex-wrap',
+  'gap',
+  'width',
+  'height',
+  'min-width',
+  'min-height',
+  'max-width',
+  'max-height',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'overflow',
+  'background',
+  'background-color',
+  'background-size',
+  'background-position',
+  'background-repeat',
+  'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
+  'border-radius',
+  'box-shadow',
+  'opacity',
+  'font-size',
+  'font-weight',
+  'font-family',
+  'font-style',
+  'line-height',
+  'letter-spacing',
+  'text-align',
+  'text-decoration',
+  'text-transform',
+  'white-space',
+  'color',
+])
+
+const NON_SHARED_STYLE_PROP_BLOCKLIST = new Set([
+  'box-sizing',
+  'left',
+  'top',
+  'right',
+  'bottom',
+  'z-index',
+  'transform',
+  'transform-origin',
+])
+
 export function buildStyleExtraction(root: RenderNode, mode: string): StyleExtractionResult {
   if (mode === 'off') {
     return createInlineStyleExtraction(root)
   }
-  return extractSharedStyles(root, mode as Exclude<string, 'off'>)
+  return extractSharedStyles(root)
 }
 
-function extractSharedStyles(root: RenderNode, mode: Exclude<string, 'off'>): StyleExtractionResult {
+function extractSharedStyles(root: RenderNode): StyleExtractionResult {
   const nodeStyleMap: Array<{
     node: RenderNode
     sharedCandidateStyles: StyleEntry[]
@@ -122,8 +238,8 @@ function extractSharedStyles(root: RenderNode, mode: Exclude<string, 'off'>): St
   }> = []
 
   walkTree(root, (node) => {
-    const sharedCandidateStyles = node.styles.filter((style) => isExtractableSharedStyle(style, mode))
-    const ownStyles = node.styles.filter((style) => !isExtractableSharedStyle(style, mode))
+    const sharedCandidateStyles = node.styles.filter((style) => isExtractableSharedStyle(style))
+    const ownStyles = node.styles.filter((style) => !isExtractableSharedStyle(style))
     nodeStyleMap.push({
       node,
       sharedCandidateStyles,
@@ -160,7 +276,7 @@ function extractSharedStyles(root: RenderNode, mode: Exclude<string, 'off'>): St
     if (usesSharedBlock) {
       let sharedClassName = sharedClassBySignature[blockSignature]
       if (!sharedClassName) {
-        sharedClassName = `${mode === 'layout' ? 'layout' : 'style'}-group-${sharedBlocks.length + 1}`
+        sharedClassName = `layout-group-${sharedBlocks.length + 1}`
         sharedClassBySignature[blockSignature] = sharedClassName
         sharedBlocks.push({
           className: sharedClassName,
@@ -203,26 +319,12 @@ function createInlineStyleExtraction(root: RenderNode): StyleExtractionResult {
   }
 }
 
-function isExtractableSharedStyle(style: StyleEntry, mode: Exclude<string, 'off'>): boolean {
-  if (style.prop === 'box-sizing') {
+function isExtractableSharedStyle(style: StyleEntry): boolean {
+  if (NON_SHARED_STYLE_PROP_BLOCKLIST.has(style.prop)) {
     return false
   }
 
-  if (mode === 'full') {
-    return true
-  }
-
-  const LAYOUT_SHARED_STYLE_PROP_ALLOWLIST = new Set([
-    'display',
-    'flex-direction',
-    'justify-content',
-    'align-items',
-    'flex-wrap',
-    'align-self',
-    'gap',
-  ])
-
-  return LAYOUT_SHARED_STYLE_PROP_ALLOWLIST.has(style.prop)
+  return STRUCTURAL_SHARED_STYLE_PROP_ALLOWLIST.has(style.prop)
 }
 
 function getStyleSignature(style: StyleEntry): string {

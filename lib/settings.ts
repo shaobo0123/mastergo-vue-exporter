@@ -41,8 +41,10 @@ function resolveLegacyGeneratorSettings(data: GenerateEvent): Partial<GeneratorS
   }
 
   const mode = getString(preferences.styleExtractMode)
-  if (mode === 'off' || mode === 'layout' || mode === 'full') {
+  if (mode === 'off' || mode === 'layout') {
     settings.styleExtractionMode = mode
+  } else if (mode === 'full') {
+    settings.styleExtractionMode = 'layout'
   } else if (getString(preferences.extractStyles) === 'off') {
     settings.styleExtractionMode = 'off'
   }
@@ -137,8 +139,10 @@ function normalizePartialGeneratorSettings(value: unknown): Partial<GeneratorSet
     partial.styleFormat = styleFormat
   }
 
-  if (styleExtractionMode === 'off' || styleExtractionMode === 'layout' || styleExtractionMode === 'full') {
+  if (styleExtractionMode === 'off' || styleExtractionMode === 'layout') {
     partial.styleExtractionMode = styleExtractionMode
+  } else if (styleExtractionMode === 'full') {
+    partial.styleExtractionMode = 'layout'
   }
 
   if (typeof data.exportImages === 'boolean') {
