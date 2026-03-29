@@ -5,6 +5,7 @@ export type StyleFormat = 'css' | 'scss'
 export type StyleExtractionMode = 'off' | 'layout'
 export type AssetRenderMode = 'css' | 'auto' | 'image'
 export type ExportImageFormat = 'PNG' | 'JPG' | 'WEBP' | 'SVG'
+export type AssetContentEncoding = 'base64' | 'utf8'
 
 export type GenerateEvent = {
   layerId: string
@@ -44,6 +45,36 @@ export type AssetExportOptions = {
   format: ExportImageFormat
   scale: number
   renderMode: AssetRenderMode
+}
+
+export type AssetRef = {
+  id: string
+  fileName: string
+  relativePath: string
+  mimeType: string
+  format: ExportImageFormat
+  width: number
+  height: number
+}
+
+export type AssetManifestEntry = AssetRef & {
+  nodeId: string
+  nodeName: string
+  hash: string
+  encoding: AssetContentEncoding
+  content: string
+}
+
+export type AssetManifest = {
+  version: 1
+  basePath: string
+  assets: AssetManifestEntry[]
+}
+
+export type AssetExportBundle = {
+  componentName: string
+  generatedAt: string
+  manifest: AssetManifest
 }
 
 export type GeneratorSettings = {
@@ -96,7 +127,7 @@ export type RenderNode = {
   text: string
   styles: StyleEntry[]
   children: RenderNode[]
-  rasterAssetDataUrl: string
+  rasterAsset: AssetRef | null
 }
 
 export type ElementTemplateNode = {
@@ -135,6 +166,9 @@ export type BuildContext = {
   classNameCount: Record<string, number>
   warnings: string[]
   assetExport: AssetExportOptions
+  assets: AssetManifestEntry[]
+  assetIndexByHash: Record<string, AssetRef>
+  assetFileNameCount: Record<string, number>
   styleCodeCache: Record<string, StyleEntry[]>
   styleExtractionMode: StyleExtractionMode
 }

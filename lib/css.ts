@@ -827,8 +827,8 @@ export function pushBlendStyles(styles: StyleEntry[], rawNode: NodeRecord) {
   }
 }
 
-export function pushRasterAssetStyles(styles: StyleEntry[], rasterAssetDataUrl: string) {
-  pushStyle(styles, 'background-image', `url("${escapeCssUrlForLayer(rasterAssetDataUrl)}")`)
+export function pushRasterAssetStyles(styles: StyleEntry[], assetPath: string) {
+  pushStyle(styles, 'background-image', `url("${escapeCssUrlForLayer(assetPath)}")`)
   pushStyle(styles, 'background-size', '100% 100%')
   pushStyle(styles, 'background-position', 'center')
   pushStyle(styles, 'background-repeat', 'no-repeat')

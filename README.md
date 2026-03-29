@@ -10,6 +10,8 @@
 - 支持 `CSS` / `SCSS`
 - 支持重复样式提取
 - 支持图片资源导出
+- 支持图片资源外置与 `generated-assets.zip` 导出
+- 支持根据最近一次 manifest 一键下载 `generated-assets.zip`
 - 支持官方 Codegen 开关
 - 支持在插件 UI 中保存导出设置
 - 支持在插件 UI 中编辑和保存提示词模板
@@ -66,6 +68,8 @@ npm run build
 3. 在 Dev Mode 的 snippet 面板中使用本插件
 4. 点击“打开设置”可调整导出参数
 5. 在设置面板中可直接编辑并保存提示词
+6. 若导出结果包含图片资源，组件内只保留资源路径引用
+7. 可在设置面板中下载最近一次生成的 `generated-assets.zip`，压缩包内包含资源文件和 `assets.manifest.json`
 
 ## 提示词说明
 
@@ -82,3 +86,4 @@ npm run build
 - 远程提示词同步
 - AI 二次重构流水线
 - 更强的响应式布局规则映射
+- 根据 `assets.manifest.json` 自动落盘导出资源文件

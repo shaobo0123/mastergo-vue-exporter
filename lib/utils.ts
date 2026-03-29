@@ -66,6 +66,17 @@ export function escapeCssUrl(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '')
 }
 
+export function hashString(value: string): string {
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
 // 错误处理
 export function getErrorMessage(error: unknown): string {
   if (typeof error === 'string') {
@@ -127,6 +138,17 @@ export function sanitizeClassName(value: string): string {
   }
 
   return /^[a-z_]/.test(normalized) ? normalized : `node-${normalized}`
+}
+
+export function sanitizeFileName(value: string, fallback = 'asset'): string {
+  const normalized = value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+
+  return normalized || fallback
 }
 
 export function toPascalCase(value: string): string {

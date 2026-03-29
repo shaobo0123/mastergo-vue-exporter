@@ -1,4 +1,4 @@
-import type { NodeRecord, ExportableNode, RenderNode, StyleEntry, BuildContext, AssetExportOptions } from './types'
+import type { NodeRecord, ExportableNode, RenderNode, StyleEntry, BuildContext, AssetRef } from './types'
 import { getString, getNumber, getBoolean, getList, getObjectArray, pushStyle, appendStyle, sanitizeClassName, roundNumber, getOptionalNumber } from './utils'
 import { normalizeNodeType, normalizeLayoutMode, normalizeWrap, mapPrimaryAxisAlign, mapCounterAxisAlign, getVisiblePaints, normalizeStrokeStyle, pushFillStyles, pushBorderStyles, pushRadiusStyles, pushLineStyles, pushSizeStyles, pushPaddingStyles, pushTextStyles, pushEffectStyles, pushBlendStyles, pushRasterAssetStyles } from './css'
 
@@ -40,26 +40,26 @@ export function createClassName(name: string, type: string, context: BuildContex
 
 // 节点判断函数
 export function isRedundantEmptyNode(node: RenderNode): boolean {
-  if (node.tag === 'span' || node.text || node.rasterAssetDataUrl || node.children.length > 0) {
+  if (node.tag === 'span' || node.text || node.rasterAsset || node.children.length > 0) {
     return false
   }
   return node.styles.every((style) => isStructurallyNeutralStyle(style))
 }
 
 export function isNeutralWrapperNode(node: RenderNode): boolean {
-  if (node.tag === 'span' || node.text || node.rasterAssetDataUrl || node.children.length !== 1) {
+  if (node.tag === 'span' || node.text || node.rasterAsset || node.children.length !== 1) {
     return false
   }
   return node.styles.length > 0 && node.styles.every((style) => isStructurallyNeutralStyle(style))
 }
 
 function isMergeableSingleChildWrapper(node: RenderNode): boolean {
-  if (node.tag === 'span' || node.text || node.rasterAssetDataUrl || node.children.length !== 1) {
+  if (node.tag === 'span' || node.text || node.rasterAsset || node.children.length !== 1) {
     return false
   }
 
   const [child] = node.children
-  if (child.tag === 'span' || child.text || child.rasterAssetDataUrl) {
+  if (child.tag === 'span' || child.text || child.rasterAsset) {
     return false
   }
 
@@ -469,7 +469,7 @@ export function buildNodeStyles(
   layoutMode: string,
   parentLayoutMode: string | null,
   hasChildren: boolean,
-  rasterAssetDataUrl: string,
+  rasterAsset: AssetRef | null,
   context: BuildContext,
 ): StyleEntry[] {
   const styles: StyleEntry[] = []
@@ -526,9 +526,9 @@ export function buildNodeStyles(
   pushStyleIdFallbackStyles(styles, rawNode, type, context)
 
   pushPaddingStyles(styles, rawNode)
-  if (rasterAssetDataUrl) {
+  if (rasterAsset) {
     pushSizeStyles(styles, width, height, type)
-    pushRasterAssetStyles(styles, rasterAssetDataUrl)
+    pushRasterAssetStyles(styles, rasterAsset.relativePath)
   } else if (type === 'LINE') {
     pushLineStyles(styles, rawNode, width, height, rotation)
   } else {
@@ -566,13 +566,13 @@ export async function createRenderNode(
   rawNode: ExportableNode,
   parentLayoutMode: string | null,
   context: BuildContext,
-  resolveRasterAsset: (node: ExportableNode, type: string, name: string, context: BuildContext) => Promise<string>,
+  resolveRasterAsset: (node: ExportableNode, type: string, name: string, context: BuildContext) => Promise<AssetRef | null>,
 ): Promise<RenderNode> {
   const type = normalizeNodeType(getString(rawNode.type))
   const name = getString(rawNode.name) || type.toLowerCase()
   const layoutMode = normalizeLayoutMode(getString(rawNode.layoutMode))
-  const rasterAssetDataUrl = await resolveRasterAsset(rawNode, type, name, context)
-  const children = rasterAssetDataUrl
+  const rasterAsset = await resolveRasterAsset(rawNode, type, name, context)
+  const children = rasterAsset
     ? []
     : await Promise.all(
         getChildren(rawNode)
@@ -592,9 +592,9 @@ export async function createRenderNode(
     tag: pickTag(type, children.length > 0),
     className: createClassName(name, type, context),
     text: getNodeText(rawNode, type),
-    styles: buildNodeStyles(rawNode, type, layoutMode, parentLayoutMode, children.length > 0, rasterAssetDataUrl, context),
+    styles: buildNodeStyles(rawNode, type, layoutMode, parentLayoutMode, children.length > 0, rasterAsset, context),
     children,
-    rasterAssetDataUrl,
+    rasterAsset,
   }
 }
 

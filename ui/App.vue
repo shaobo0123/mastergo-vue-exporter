@@ -128,6 +128,30 @@
         <button type="button" class="primary" @click="savePrompt">保存提示词</button>
       </div>
     </section>
+
+    <section class="form-card">
+      <div class="section-head">
+        <h2>图片资源包</h2>
+        <p>
+          <template v-if="latestAssetBundle">
+            最近一次生成组件：{{ latestAssetBundle.componentName }}，共 {{ latestAssetBundle.manifest.assets.length }} 个资源。
+          </template>
+          <template v-else>
+            还没有可导出的资源包。先在 Snippet 面板生成一次带图片资源的代码。
+          </template>
+        </p>
+      </div>
+
+      <p v-if="latestAssetBundle" class="asset-meta">
+        生成时间：{{ formatGeneratedAt(latestAssetBundle.generatedAt) }}
+      </p>
+
+      <div class="actions">
+        <button type="button" class="ghost" :disabled="!latestAssetBundle" @click="exportAssetBundle">
+          导出 generated-assets.zip
+        </button>
+      </div>
+    </section>
   </main>
 </template>
 
@@ -135,13 +159,15 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { PluginMessage, UIMessage, sendMsgToPlugin } from '@messages/sender'
 import { getErrorMessage } from '@lib/utils'
-import type { GeneratorSettings, SnippetLanguage, StyleFormat, StyleExtractionMode, AssetRenderMode, ExportImageFormat } from '@lib/types'
+import type { GeneratorSettings, SnippetLanguage, StyleFormat, StyleExtractionMode, AssetRenderMode, ExportImageFormat, AssetExportBundle } from '@lib/types'
+import { downloadAssetBundle } from './asset-download'
 import promptTemplate from '../prompt.md?raw'
 
 const settings = ref<GeneratorSettings | null>(null)
 const statusText = ref('正在读取设置...')
 const statusTone = ref<'normal' | 'saved'>('normal')
 const promptContent = ref(promptTemplate.trim())
+const latestAssetBundle = ref<AssetExportBundle | null>(null)
 
 function toPlainSettings(value: GeneratorSettings) {
   return {
@@ -206,6 +232,26 @@ function hideSettings() {
   })
 }
 
+function exportAssetBundle() {
+  if (!latestAssetBundle.value) {
+    statusText.value = '还没有可导出的图片资源包。'
+    statusTone.value = 'normal'
+    return
+  }
+
+  downloadAssetBundle(latestAssetBundle.value)
+  statusText.value = '图片资源包已开始下载。'
+  statusTone.value = 'saved'
+}
+
+function formatGeneratedAt(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString()
+}
+
 async function handlePluginMessage(rawMessage: unknown) {
   const message = (rawMessage ?? {}) as { type?: string; data?: unknown }
 
@@ -224,6 +270,7 @@ async function handlePluginMessage(rawMessage: unknown) {
     if (typeof raw.promptContent === 'string') {
       promptContent.value = raw.promptContent
     }
+    latestAssetBundle.value = (raw.latestAssetBundle as AssetExportBundle | null) || null
     statusText.value = message.type === PluginMessage.SETTINGS_SAVED ? '设置已保存。' : '设置已加载。'
     statusTone.value = message.type === PluginMessage.SETTINGS_SAVED ? 'saved' : 'normal'
     return
@@ -315,7 +362,8 @@ h2 {
 
 .desc,
 .section-head p,
-.status {
+.status,
+.asset-meta {
   margin: 0;
   color: #4a657f;
   font-size: 13px;

@@ -1,5 +1,5 @@
-import type { GeneratorSettings, GenerateEvent, SnippetBlock, SnippetLanguage, StyleFormat, ExportImageFormat, AssetRenderMode, CodeFile } from './types'
-import { DEFAULT_GENERATOR_SETTINGS, SETTINGS_STORAGE_KEY, PROMPT_STORAGE_KEY } from './constants'
+import type { GeneratorSettings, GenerateEvent, SnippetBlock, SnippetLanguage, StyleFormat, ExportImageFormat, AssetRenderMode, CodeFile, AssetExportBundle, AssetManifest, AssetManifestEntry } from './types'
+import { DEFAULT_GENERATOR_SETTINGS, SETTINGS_STORAGE_KEY, PROMPT_STORAGE_KEY, ASSET_BUNDLE_STORAGE_KEY } from './constants'
 import { getString, escapeHtml, getErrorMessage } from './utils'
 import promptTemplate from '../prompt.md?raw'
 
@@ -17,15 +17,20 @@ export async function resolveGeneratorSettings(data?: GenerateEvent): Promise<Ge
   })
 }
 
-export async function buildUiState(): Promise<GeneratorSettings & { promptContent: string }> {
+export async function buildUiState(): Promise<GeneratorSettings & { promptContent: string; latestAssetBundle: AssetExportBundle | null }> {
   return {
     ...(await resolveGeneratorSettings()),
     promptContent: await resolveStoredPrompt(),
+    latestAssetBundle: await resolveStoredAssetBundle(),
   }
 }
 
 export async function resolveStoredPrompt(): Promise<string> {
   return normalizePromptContent(await mg.clientStorage.getAsync(PROMPT_STORAGE_KEY))
+}
+
+export async function resolveStoredAssetBundle(): Promise<AssetExportBundle | null> {
+  return normalizeStoredAssetBundle(await mg.clientStorage.getAsync(ASSET_BUNDLE_STORAGE_KEY))
 }
 
 function resolveLegacyGeneratorSettings(data: GenerateEvent): Partial<GeneratorSettings> {
@@ -116,6 +121,85 @@ export function normalizePromptContent(value: unknown): string {
   }
   const content = value.replace(/\r\n?/g, '\n').trim()
   return content || DEFAULT_PROMPT_TEMPLATE
+}
+
+function normalizeStoredAssetBundle(value: unknown): AssetExportBundle | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const componentName = getString(record.componentName)
+  const generatedAt = getString(record.generatedAt)
+  const manifest = normalizeAssetManifest(record.manifest)
+
+  if (!componentName || !generatedAt || !manifest) {
+    return null
+  }
+
+  return {
+    componentName,
+    generatedAt,
+    manifest,
+  }
+}
+
+function normalizeAssetManifest(value: unknown): AssetManifest | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const assets = Array.isArray(record.assets)
+    ? record.assets.map((entry) => normalizeAssetManifestEntry(entry)).filter((entry): entry is AssetManifestEntry => Boolean(entry))
+    : []
+
+  if (!assets.length) {
+    return null
+  }
+
+  return {
+    version: 1,
+    basePath: getString(record.basePath) || './generated-assets',
+    assets,
+  }
+}
+
+function normalizeAssetManifestEntry(value: unknown): AssetManifestEntry | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const id = getString(record.id)
+  const fileName = getString(record.fileName)
+  const relativePath = getString(record.relativePath)
+  const mimeType = getString(record.mimeType)
+  const format = resolveExportImageFormat(record.format)
+  const nodeId = getString(record.nodeId)
+  const nodeName = getString(record.nodeName)
+  const hash = getString(record.hash)
+  const encoding = record.encoding === 'utf8' ? 'utf8' : record.encoding === 'base64' ? 'base64' : ''
+  const content = getString(record.content)
+
+  if (!id || !fileName || !relativePath || !mimeType || !nodeId || !nodeName || !hash || !encoding || !content) {
+    return null
+  }
+
+  return {
+    id,
+    fileName,
+    relativePath,
+    mimeType,
+    format,
+    width: typeof record.width === 'number' ? record.width : 0,
+    height: typeof record.height === 'number' ? record.height : 0,
+    nodeId,
+    nodeName,
+    hash,
+    encoding,
+    content,
+  }
 }
 
 function normalizePartialGeneratorSettings(value: unknown): Partial<GeneratorSettings> {
@@ -258,4 +342,4 @@ function mapCodeFileTypeToSnippetLanguage(type: CodeFile['type']): string {
 }
 
 // 导出存储键和默认模板供消息处理使用
-export { SETTINGS_STORAGE_KEY, PROMPT_STORAGE_KEY, DEFAULT_GENERATOR_SETTINGS, DEFAULT_PROMPT_TEMPLATE }
+export { SETTINGS_STORAGE_KEY, PROMPT_STORAGE_KEY, ASSET_BUNDLE_STORAGE_KEY, DEFAULT_GENERATOR_SETTINGS, DEFAULT_PROMPT_TEMPLATE }
