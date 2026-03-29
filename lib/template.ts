@@ -36,14 +36,32 @@ export function buildStyleSheet(root: RenderNode, styleExtraction: StyleExtracti
     return `.${block.className} {\n${lines.join('\n')}\n}`
   })
 
+  const selectorGroups = new Map<string, { selectors: string[]; styles: StyleEntry[] }>()
+
   walkTree(root, (node) => {
     const nodeStyles = styleExtraction.nodeStylesByNodeId[node.id] || []
     if (!nodeStyles.length) {
       return
     }
 
-    const lines = nodeStyles.map((style) => `  ${style.prop}: ${style.value};`)
-    blocks.push(`.${node.className} {\n${lines.join('\n')}\n}`)
+    const signature = getStyleBlockSignature(nodeStyles)
+    const selector = `.${node.className}`
+    const group = selectorGroups.get(signature)
+
+    if (group) {
+      group.selectors.push(selector)
+      return
+    }
+
+    selectorGroups.set(signature, {
+      selectors: [selector],
+      styles: nodeStyles,
+    })
+  })
+
+  selectorGroups.forEach((group) => {
+    const lines = group.styles.map((style) => `  ${style.prop}: ${style.value};`)
+    blocks.push(`${group.selectors.join(', ')} {\n${lines.join('\n')}\n}`)
   })
 
   return blocks.join('\n\n')
@@ -97,61 +115,69 @@ export function buildStyleExtraction(root: RenderNode, mode: string): StyleExtra
 }
 
 function extractSharedStyles(root: RenderNode, mode: Exclude<string, 'off'>): StyleExtractionResult {
-  // 一次遍历收集所有节点的样式信息
-  const nodeStyleMap: Array<{ node: RenderNode; styles: StyleEntry[] }> = []
+  const nodeStyleMap: Array<{
+    node: RenderNode
+    sharedCandidateStyles: StyleEntry[]
+    ownStyles: StyleEntry[]
+  }> = []
 
   walkTree(root, (node) => {
+    const sharedCandidateStyles = node.styles.filter((style) => isExtractableSharedStyle(style, mode))
+    const ownStyles = node.styles.filter((style) => !isExtractableSharedStyle(style, mode))
     nodeStyleMap.push({
       node,
-      styles: node.styles,
+      sharedCandidateStyles,
+      ownStyles,
     })
   })
 
-  // 统计样式签名出现次数
   const signatureCount: Record<string, number> = {}
-  for (const { styles } of nodeStyleMap) {
-    for (const style of styles) {
-      if (isExtractableSharedStyle(style, mode)) {
-        const signature = getStyleSignature(style)
-        signatureCount[signature] = (signatureCount[signature] || 0) + 1
-      }
+  for (const { sharedCandidateStyles } of nodeStyleMap) {
+    if (!shouldExtractSharedBlock(sharedCandidateStyles)) {
+      continue
+    }
+
+    const signature = getStyleBlockSignature(sharedCandidateStyles)
+    if (signature) {
+      signatureCount[signature] = (signatureCount[signature] || 0) + 1
     }
   }
 
-  // 根据统计结果提取共享样式
   const sharedClassBySignature: Record<string, string> = {}
   const sharedBlocks: SharedStyleBlock[] = []
   const classNamesByNodeId: Record<string, string[]> = {}
   const nodeStylesByNodeId: Record<string, StyleEntry[]> = {}
 
-  for (const { node, styles } of nodeStyleMap) {
+  for (const { node, sharedCandidateStyles, ownStyles } of nodeStyleMap) {
     const classNames: string[] = []
-    const ownStyles: StyleEntry[] = []
 
-    for (const style of styles) {
-      const signature = getStyleSignature(style)
-      if (isExtractableSharedStyle(style, mode) && (signatureCount[signature] || 0) >= 2) {
-        let sharedClassName = sharedClassBySignature[signature]
-        if (!sharedClassName) {
-          sharedClassName = `shared-style-${sharedBlocks.length + 1}`
-          sharedClassBySignature[signature] = sharedClassName
-          sharedBlocks.push({
-            className: sharedClassName,
-            styles: [style],
-          })
-        }
-        classNames.push(sharedClassName)
-        continue
+    const blockSignature = shouldExtractSharedBlock(sharedCandidateStyles)
+      ? getStyleBlockSignature(sharedCandidateStyles)
+      : ''
+
+    const usesSharedBlock = blockSignature && (signatureCount[blockSignature] || 0) >= 2
+
+    if (usesSharedBlock) {
+      let sharedClassName = sharedClassBySignature[blockSignature]
+      if (!sharedClassName) {
+        sharedClassName = `${mode === 'layout' ? 'layout' : 'style'}-group-${sharedBlocks.length + 1}`
+        sharedClassBySignature[blockSignature] = sharedClassName
+        sharedBlocks.push({
+          className: sharedClassName,
+          styles: sharedCandidateStyles,
+        })
       }
-      ownStyles.push(style)
+      classNames.push(sharedClassName)
     }
 
-    if (ownStyles.length) {
+    const nodeSpecificStyles = usesSharedBlock ? ownStyles : node.styles
+
+    if (nodeSpecificStyles.length) {
       classNames.push(node.className)
     }
 
     classNamesByNodeId[node.id] = classNames
-    nodeStylesByNodeId[node.id] = ownStyles
+    nodeStylesByNodeId[node.id] = nodeSpecificStyles
   }
 
   return {
@@ -178,12 +204,15 @@ function createInlineStyleExtraction(root: RenderNode): StyleExtractionResult {
 }
 
 function isExtractableSharedStyle(style: StyleEntry, mode: Exclude<string, 'off'>): boolean {
+  if (style.prop === 'box-sizing') {
+    return false
+  }
+
   if (mode === 'full') {
     return true
   }
 
   const LAYOUT_SHARED_STYLE_PROP_ALLOWLIST = new Set([
-    'box-sizing',
     'display',
     'flex-direction',
     'justify-content',
@@ -198,4 +227,12 @@ function isExtractableSharedStyle(style: StyleEntry, mode: Exclude<string, 'off'
 
 function getStyleSignature(style: StyleEntry): string {
   return `${style.prop}\u0000${style.value}`
+}
+
+function getStyleBlockSignature(styles: StyleEntry[]): string {
+  return styles.map((style) => getStyleSignature(style)).join('\u0001')
+}
+
+function shouldExtractSharedBlock(styles: StyleEntry[]): boolean {
+  return styles.length >= 2
 }

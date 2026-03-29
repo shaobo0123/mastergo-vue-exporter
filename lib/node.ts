@@ -31,8 +31,8 @@ export function pickTag(type: string, hasChildren: boolean): string {
   return 'div'
 }
 
-export function createClassName(name: string, context: BuildContext): string {
-  const base = sanitizeClassName(name) || 'mastergo-node'
+export function createClassName(name: string, type: string, context: BuildContext): string {
+  const base = resolveClassNameBase(name, type)
   const used = context.classNameCount[base] || 0
   context.classNameCount[base] = used + 1
   return used === 0 ? base : `${base}-${used + 1}`
@@ -53,11 +53,159 @@ export function isNeutralWrapperNode(node: RenderNode): boolean {
   return node.styles.length > 0 && node.styles.every((style) => isStructurallyNeutralStyle(style))
 }
 
+function isMergeableSingleChildWrapper(node: RenderNode): boolean {
+  if (node.tag === 'span' || node.text || node.rasterAssetDataUrl || node.children.length !== 1) {
+    return false
+  }
+
+  const [child] = node.children
+  if (child.tag === 'span' || child.text || child.rasterAssetDataUrl) {
+    return false
+  }
+
+  if (!node.styles.length || !node.styles.every((style) => MERGEABLE_WRAPPER_STYLE_PROPS.has(style.prop))) {
+    return false
+  }
+
+  return isOverlayChildAtWrapperOrigin(node, child)
+}
+
 function isStructurallyNeutralStyle(style: StyleEntry): boolean {
   return (
     (style.prop === 'box-sizing' && style.value === 'border-box') ||
     (style.prop === 'position' && style.value === 'relative')
   )
+}
+
+const MERGEABLE_WRAPPER_STYLE_PROPS = new Set([
+  'box-sizing',
+  'position',
+  'left',
+  'top',
+  'width',
+  'height',
+  'z-index',
+])
+
+function resolveClassNameBase(name: string, type: string): string {
+  const sanitized = sanitizeClassName(name)
+  if (sanitized && !isGenericClassName(sanitized)) {
+    return sanitized
+  }
+
+  switch (type) {
+    case 'TEXT':
+      return 'text'
+    case 'IMAGE':
+      return 'image'
+    case 'LINE':
+      return 'divider'
+    case 'VECTOR':
+    case 'BOOLEAN_OPERATION':
+    case 'STAR':
+    case 'POLYGON':
+    case 'ELLIPSE':
+      return 'shape'
+    case 'SECTION':
+    case 'COMPONENT_SET':
+    case 'COMPONENT':
+      return 'section'
+    case 'FRAME':
+    case 'GROUP':
+    case 'INSTANCE':
+      return 'container'
+    default:
+      return 'element'
+  }
+}
+
+function isGenericClassName(value: string): boolean {
+  return [
+    /^mastergo-node(?:-\d+)*$/,
+    /^node(?:-\d+)*$/,
+    /^frame(?:-\d+)*$/,
+    /^group(?:-\d+)*$/,
+    /^instance(?:-\d+)*$/,
+    /^component(?:-\d+)*$/,
+    /^rectangle(?:-\d+)*$/,
+    /^vector(?:-\d+)*$/,
+    /^boolean-operation(?:-\d+)*$/,
+    /^line(?:-\d+)*$/,
+    /^ellipse(?:-\d+)*$/,
+    /^polygon(?:-\d+)*$/,
+    /^star(?:-\d+)*$/,
+    /^mask(?:-\d+)*$/,
+    /^bg(?:-\d+)*$/,
+    /^border(?:-\d+)*$/,
+  ].some((pattern) => pattern.test(value))
+}
+
+function isOverlayChildAtWrapperOrigin(parent: RenderNode, child: RenderNode): boolean {
+  const parentPosition = getStyleValue(parent.styles, 'position')
+  const childPosition = getStyleValue(child.styles, 'position')
+  const childLeft = getStyleValue(child.styles, 'left')
+  const childTop = getStyleValue(child.styles, 'top')
+
+  if (parentPosition !== 'absolute' || childPosition !== 'absolute') {
+    return false
+  }
+
+  if (!isZeroPosition(childLeft) || !isZeroPosition(childTop)) {
+    return false
+  }
+
+  return haveSameBoxSize(parent.styles, child.styles)
+}
+
+function haveSameBoxSize(parentStyles: StyleEntry[], childStyles: StyleEntry[]): boolean {
+  const parentWidth = getStyleValue(parentStyles, 'width')
+  const parentHeight = getStyleValue(parentStyles, 'height')
+  const childWidth = getStyleValue(childStyles, 'width')
+  const childHeight = getStyleValue(childStyles, 'height')
+
+  return Boolean(parentWidth && parentHeight && parentWidth === childWidth && parentHeight === childHeight)
+}
+
+function isZeroPosition(value: string): boolean {
+  return value === '0' || value === '0px'
+}
+
+function getStyleValue(styles: StyleEntry[], prop: string): string {
+  return styles.find((style) => style.prop === prop)?.value || ''
+}
+
+function mergeSingleChildWrapper(node: RenderNode): RenderNode {
+  const [child] = node.children
+  const mergedStyles = child.styles.map((style) => ({ ...style }))
+  const parentLeft = getStyleValue(node.styles, 'left')
+  const parentTop = getStyleValue(node.styles, 'top')
+  const parentZIndex = getStyleValue(node.styles, 'z-index')
+
+  replaceStyleValue(mergedStyles, 'left', parentLeft)
+  replaceStyleValue(mergedStyles, 'top', parentTop)
+
+  if (parentZIndex && !getStyleValue(mergedStyles, 'z-index')) {
+    mergedStyles.push({ prop: 'z-index', value: parentZIndex })
+  }
+
+  return {
+    ...child,
+    styles: mergedStyles,
+  }
+}
+
+function replaceStyleValue(styles: StyleEntry[], prop: string, value: string) {
+  if (!value) {
+    return
+  }
+
+  const existing = styles.find((style) => style.prop === prop)
+  if (existing) {
+    existing.value = value
+    return
+  }
+
+  styles.push({ prop, value })
 }
 
 export function getUnsupportedFillTypes(rawNode: NodeRecord): string[] {
@@ -196,6 +344,9 @@ export function normalizeRenderTree(node: RenderNode, isRoot = false): RenderNod
 
   if (!isRoot && isNeutralWrapperNode(normalizedNode)) {
     return normalizedNode.children[0]
+  }
+  if (!isRoot && isMergeableSingleChildWrapper(normalizedNode)) {
+    return mergeSingleChildWrapper(normalizedNode)
   }
   return normalizedNode
 }
@@ -439,7 +590,7 @@ export async function createRenderNode(
     name,
     type,
     tag: pickTag(type, children.length > 0),
-    className: createClassName(name, context),
+    className: createClassName(name, type, context),
     text: getNodeText(rawNode, type),
     styles: buildNodeStyles(rawNode, type, layoutMode, parentLayoutMode, children.length > 0, rasterAssetDataUrl, context),
     children,
